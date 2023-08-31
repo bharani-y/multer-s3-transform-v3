@@ -13,7 +13,7 @@ This project is mostly an integration piece for existing code samples from Multe
 ## Installation
 
 ```sh
-npm install --save multer-s3
+npm install --save multer-s3-transform-v3
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ npm install --save multer-s3
 const { S3Client } = require('@aws-sdk/client-s3')
 const express = require('express')
 const multer = require('multer')
-const multerS3 = require('multer-s3')
+const multerS3 = require('multer-s3-transform-v3')
 
 const app = express()
 
@@ -229,6 +229,66 @@ var upload = multer({
 ```
 You may also use a function as the `contentEncoding`, which should be of the form `function(req, file, cb)`.
 
+## Transforming Files Before Upload
+
+The optional `shouldTransform` option tells multer whether it should transform the file before it is uploaded. By default, it is set to `false`. If set to `true`, `transforms` option must be added, which tells how to transform the file. `transforms` option should be an `Array`, containing objects with can have properties `id` and `transform`.
+
+```javascript
+var upload = multer({
+  storage: multerS3({
+    s3: s3,
+    bucket: 'some-bucket',
+    shouldTransform: function (req, file, cb) {
+      cb(null, /^image/i.test(file.mimetype))
+    },
+    transforms: [{
+      id: 'original',     
+      transform: function (req, file, cb) {
+        cb(null, sharp().jpeg(), 'image-original.jpg')
+      }
+    }, {
+      id: 'thumbnail',     
+      transform: function (req, file, cb) {
+        cb(null, sharp().resize(100, 100).jpeg(),'image-thumbnail.jpg')
+      }
+    }]
+  })
+})
+```
+If this option is used, each file passed to your router request will have a `transforms` array, with every transform you defined.
+```json
+{
+  "data": {
+    "fieldname": "image",
+    "originalname": "image.jpg",
+    "encoding": "7bit",
+    "mimetype": "image/jpg",
+    "transforms": [
+      {
+        "id": "thumbnail",
+        "size": 2440,
+        "bucket": "some-bucket",
+        "key": "image-thumbnail.jpg",
+        "acl": "public-read",
+        "contentType": "image/jpg",
+        "metadata": null,
+        "location": "https://some-bucket.s3.us-east-1.amazonaws.com/image-thumbnail.jpg",
+        "etag": "\"9d554e03e37c79bff7ce31d375900db6\""
+      },
+      {
+        "id": "original",
+        "size": 18006,
+        "bucket": "some-bucket",
+        "key": "image-original.jpg",
+        "acl": "public-read",
+        "contentType": "image/jpg",
+        "metadata": null,
+        "location": "https://some-bucket.s3.us-east-1.amazonaws.com/image-original.jpg",
+        "etag": "\"76c09df7bdd752a749f91b9663838fb2\""
+      },
+    ]
+  }
+}
 ## Testing
 
 The tests mock all access to S3 and can be run completely offline.

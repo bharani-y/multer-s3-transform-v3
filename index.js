@@ -181,13 +181,24 @@ function S3Storage (opts) {
     case 'undefined': this.getSSEKMS = defaultSSEKMS; break
     default: throw new TypeError('Expected opts.sseKmsKeyId to be undefined, string, or function')
   }
+
+  switch (typeof opts.shouldTransform) {
+    case 'function': this.shouldTransform = opts.shouldTransform; break
+    case 'undefined': this.shouldTransform = null; break
+    default: throw new TypeError('Expected opts.shouldTransform to be undefined or function')
+  }
+
+  switch (typeof opts.transforms) {
+    case 'object': this.transforms = opts.transforms; break
+    case 'undefined': this.transforms = null; break
+    default: throw new TypeError('Expected opts.transforms to be undefined, or array')
+  }
 }
 
 S3Storage.prototype._handleFile = function (req, file, cb) {
+  var self = this;
   collect(this, req, file, function (err, opts) {
     if (err) return cb(err)
-
-    var currentSize = 0
 
     var params = {
       Bucket: opts.bucket,
@@ -210,35 +221,104 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
       params.ContentEncoding = opts.contentEncoding
     }
 
-    var upload = new Upload({
-      client: this.s3,
-      params: params
-    })
+    if (!this.shouldTransform) {
+      var currentSize = 0      
 
-    upload.on('httpUploadProgress', function (ev) {
-      if (ev.total) currentSize = ev.total
-    })
-
-    util.callbackify(upload.done.bind(upload))(function (err, result) {
-      if (err) return cb(err)
-
-      cb(null, {
-        size: currentSize,
-        bucket: opts.bucket,
-        key: opts.key,
-        acl: opts.acl,
-        contentType: opts.contentType,
-        contentDisposition: opts.contentDisposition,
-        contentEncoding: opts.contentEncoding,
-        storageClass: opts.storageClass,
-        serverSideEncryption: opts.serverSideEncryption,
-        metadata: opts.metadata,
-        location: result.Location,
-        etag: result.ETag,
-        versionId: result.VersionId
+      var upload = new Upload({
+        client: this.s3,
+        params: params
       })
-    })
+
+      upload.on('httpUploadProgress', function (ev) {
+        if (ev.total) currentSize = ev.total
+      })
+
+      util.callbackify(upload.done.bind(upload))(function (err, result) {
+        if (err) return cb(err)
+
+        cb(null, {
+          size: currentSize,
+          bucket: opts.bucket,
+          key: opts.key,
+          acl: opts.acl,
+          contentType: opts.contentType,
+          contentDisposition: opts.contentDisposition,
+          contentEncoding: opts.contentEncoding,
+          storageClass: opts.storageClass,
+          serverSideEncryption: opts.serverSideEncryption,
+          metadata: opts.metadata,
+          location: result.Location,
+          etag: result.ETag,
+          versionId: result.VersionId
+        })
+      })
+    }else{
+      let transforms = this.transforms;
+      let results = [];
+      for (let index = 0; index < transforms.length; index++) {
+        transforms[index].transform(req, file, function(err, piper ,fileName){
+          var currentSize = 0    
+
+          var params = {
+            Bucket: opts.bucket,
+            Key: fileName,
+            ACL: opts.acl,
+            CacheControl: opts.cacheControl,
+            ContentType: opts.contentType,
+            Metadata: opts.metadata,
+            StorageClass: opts.storageClass,
+            ServerSideEncryption: opts.serverSideEncryption,
+            SSEKMSKeyId: opts.sseKmsKeyId,
+            Body: (opts.replacementStream || file.stream).pipe(piper)
+          }
+      
+          if (opts.contentDisposition) {
+            params.ContentDisposition = opts.contentDisposition
+          }
+      
+          if (opts.contentEncoding) {
+            params.ContentEncoding = opts.contentEncoding
+          }
+          
+      
+
+          var upload = new Upload({
+            client: self.s3,
+            params: params
+          })
+    
+          upload.on('httpUploadProgress', function (ev) {
+            if (ev.total) currentSize = ev.total
+          })
+    
+          util.callbackify(upload.done.bind(upload))(function (err, result) {
+            if (err) return cb(err)
+    
+            results.push({
+              size: currentSize,
+              bucket: opts.bucket,
+              key: opts.key,
+              acl: opts.acl,
+              contentType: opts.contentType,
+              contentDisposition: opts.contentDisposition,
+              contentEncoding: opts.contentEncoding,
+              storageClass: opts.storageClass,
+              serverSideEncryption: opts.serverSideEncryption,
+              metadata: opts.metadata,
+              location: result.Location,
+              etag: result.ETag,
+              versionId: result.VersionId
+            })
+
+            if(results.length == transforms.length){
+              cb(null, results)
+            }
+          })
+        })
+      }
+    }
   })
+
 }
 
 S3Storage.prototype._removeFile = function (req, file, cb) {
