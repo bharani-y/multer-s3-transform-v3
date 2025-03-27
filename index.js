@@ -7,7 +7,7 @@ var Upload = require('@aws-sdk/lib-storage').Upload
 var DeleteObjectCommand = require('@aws-sdk/client-s3').DeleteObjectCommand
 var util = require('util')
 
-function staticValue (value) {
+function staticValue(value) {
   return function (req, file, cb) {
     cb(null, value)
   }
@@ -28,7 +28,7 @@ var defaultSSEKMS = staticValue(null)
 // It is not always possible to check for an end tag if a file is very big. The firstChunk, see below, might not be the entire file.
 var svgRegex = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!doctype svg[^>]*>\s*)?<svg[^>]*>/i
 
-function isSvg (svg) {
+function isSvg(svg) {
   // Remove DTD entities
   svg = svg.replace(/\s*<!Entity\s+\S*\s*(?:"|')[^"]+(?:"|')\s*>/img, '')
   // Remove DTD markup declarations
@@ -39,13 +39,13 @@ function isSvg (svg) {
   return svgRegex.test(svg)
 }
 
-function defaultKey (req, file, cb) {
+function defaultKey(req, file, cb) {
   crypto.randomBytes(16, function (err, raw) {
     cb(err, err ? undefined : raw.toString('hex'))
   })
 }
 
-function autoContentType (req, file, cb) {
+function autoContentType(req, file, cb) {
   file.stream.once('data', function (firstChunk) {
     var type = fileType(firstChunk)
     var mime = 'application/octet-stream' // default type
@@ -66,7 +66,7 @@ function autoContentType (req, file, cb) {
   })
 }
 
-function collect (storage, req, file, cb) {
+function collect(storage, req, file, cb) {
   parallel([
     storage.getBucket.bind(storage, req, file),
     storage.getKey.bind(storage, req, file),
@@ -102,7 +102,7 @@ function collect (storage, req, file, cb) {
   })
 }
 
-function S3Storage (opts) {
+function S3Storage(opts) {
   switch (typeof opts.s3) {
     case 'object': this.s3 = opts.s3; break
     default: throw new TypeError('Expected opts.s3 to be object')
@@ -222,7 +222,7 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
     }
 
     if (!this.shouldTransform) {
-      var currentSize = 0      
+      var currentSize = 0
 
       var upload = new Upload({
         client: this.s3,
@@ -252,54 +252,54 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
           versionId: result.VersionId
         })
       })
-    }else{
+    } else {
       let transforms = this.transforms;
       let results = [];
       for (let index = 0; index < transforms.length; index++) {
-        transforms[index].transform(req, file, function(err, piper ,fileName){
-          var currentSize = 0    
-
+        transforms[index].transform(req, file, function (err, piper, fileName) {
+          var currentSize = 0
+          console.log('fileName', fileName)
           var params = {
             Bucket: opts.bucket,
             Key: fileName,
             ACL: opts.acl,
             CacheControl: opts.cacheControl,
-            ContentType: opts.contentType,
+            ContentType: 'image/webp',
             Metadata: opts.metadata,
             StorageClass: opts.storageClass,
             ServerSideEncryption: opts.serverSideEncryption,
             SSEKMSKeyId: opts.sseKmsKeyId,
             Body: (opts.replacementStream || file.stream).pipe(piper)
           }
-      
+
           if (opts.contentDisposition) {
             params.ContentDisposition = opts.contentDisposition
           }
-      
+
           if (opts.contentEncoding) {
             params.ContentEncoding = opts.contentEncoding
           }
-          
-      
+
+
 
           var upload = new Upload({
             client: self.s3,
             params: params
           })
-    
+
           upload.on('httpUploadProgress', function (ev) {
             if (ev.total) currentSize = ev.total
           })
-    
+
           util.callbackify(upload.done.bind(upload))(function (err, result) {
             if (err) return cb(err)
-    
+
             results.push({
               size: currentSize,
               bucket: opts.bucket,
-              key: opts.key,
+              key: fileName,
               acl: opts.acl,
-              contentType: opts.contentType,
+              contentType: 'image/webp',
               contentDisposition: opts.contentDisposition,
               contentEncoding: opts.contentEncoding,
               storageClass: opts.storageClass,
@@ -307,10 +307,11 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
               metadata: opts.metadata,
               location: result.Location,
               etag: result.ETag,
-              versionId: result.VersionId
+              versionId: result.VersionId,
+              id: transforms[index].id
             })
 
-            if(results.length == transforms.length){
+            if (results.length == transforms.length) {
               cb(null, results)
             }
           })
