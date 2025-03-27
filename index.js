@@ -258,7 +258,6 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
       for (let index = 0; index < transforms.length; index++) {
         transforms[index].transform(req, file, function (err, piper, fileName) {
           var currentSize = 0
-          console.log('fileName', fileName)
           var params = {
             Bucket: opts.bucket,
             Key: fileName,
