@@ -254,7 +254,7 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
       })
     } else {
       let transforms = this.transforms;
-      let results = [];
+      let results = {};
       for (let index = 0; index < transforms.length; index++) {
         transforms[index].transform(req, file, function (err, piper, fileName) {
           var currentSize = 0
@@ -293,7 +293,7 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
           util.callbackify(upload.done.bind(upload))(function (err, result) {
             if (err) return cb(err)
 
-            results.push({
+            results[transforms[index].id] = {
               size: currentSize,
               bucket: opts.bucket,
               key: fileName,
@@ -308,9 +308,9 @@ S3Storage.prototype._handleFile = function (req, file, cb) {
               etag: result.ETag,
               versionId: result.VersionId,
               id: transforms[index].id
-            })
+            }
 
-            if (results.length == transforms.length) {
+            if (Object.keys(results).length == transforms.length) {
               cb(null, results)
             }
           })
