@@ -1,5 +1,5 @@
 {
-  "name": "@vickos/multer-s3-transforms-v3",
+  "name": "@bharani-y/multer-s3-transforms-v3",
   "version": "3.0.1",
   "description": "Streaming multer storage engine for AWS S3",
   "main": "index.js",
